@@ -7,53 +7,72 @@ from datetime import datetime, timedelta
 import uuid
 import jwt
 from functools import wraps
+from flask_sqlalchemy import SQLAlchemy 
+from models import db, User
+
+from dotenv import load_dotenv 
+
+load_dotenv() 
+
+DB_HOST = os.getenv("DB_HOST", "mysql-2d.com")
+DB_USER = os.getenv("DB_USER", "amin")
+DB_PASS = os.getenv("DB_PASS", "AVJ_tr8")
+DB_NAME = os.getenv("DB_NAME", "aaen")
+DB_PORT = int(os.getenv("DB_PORT", 244))
+
 
 app = Flask(__name__)
 app.secret_key = 'your-jwt-secret-key-change-this-in-production'  # Change this in production
 CORS(app)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = F'mysql+pymysql://{DB_USER}:{DB_PASS}@localhost:3306/{DB_NAME}'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False 
+db.init_app(app)
 
 # JWT Configuration
 JWT_SECRET_KEY = 'your-jwt-secret-key-change-this-in-production'  # Should match app.secret_key
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_DELTA = timedelta(hours=24)  # Token expires in 24 hours
 
-# File to store user data
-USER_DATA_FILE = 'users.json'
+# # File to store user data
+# USER_DATA_FILE = 'users.json'
 
-def load_users():
-    """Load users from JSON file"""
-    if os.path.exists(USER_DATA_FILE):
-        with open(USER_DATA_FILE, 'r') as f:
-            return json.load(f)
-    return {}
+# def load_users():
+#     """Load users from JSON file"""
+#     if os.path.exists(USER_DATA_FILE):
+#         with open(USER_DATA_FILE, 'r') as f:
+#             return json.load(f)
+#     return {}
 
-def save_users(users):
-    """Save users to JSON file"""
-    with open(USER_DATA_FILE, 'w') as f:
-        json.dump(users, f, indent=2)
+# def save_users(users):
+#     """Save users to JSON file"""
+#     with open(USER_DATA_FILE, 'w') as f:
+#         json.dump(users, f, indent=2)
 
-def create_default_users():
-    """Create some default users for testing"""
-    users = load_users()
-    if not users:  # Only create if no users exist
-        default_users = {
-            'admin@example.com': {
-                'id': str(uuid.uuid4()),
-                'name': 'Admin User',
-                'email': 'admin@example.com',
-                'password_hash': generate_password_hash('admin123'),
-                'created_at': datetime.now().isoformat()
-            },
-            'user1@example.com': {
-                'id': str(uuid.uuid4()),
-                'name': 'Test User',
-                'email': 'user1@example.com',
-                'password_hash': generate_password_hash('password123'),
-                'created_at': datetime.now().isoformat()
-            }
-        }
-        save_users(default_users)
-        print("Default users created: admin@example.com/admin123, user1@example.com/password123")
+# def create_default_users():
+#     """Create some default users for testing"""
+#     users = load_users()
+#     if not users:  # Only create if no users exist
+#         default_users = {
+#             'admin@example.com': {
+#                 'id': str(uuid.uuid4()),
+#                 'name': 'Admin User',
+#                 'email': 'admin@example.com',
+#                 'password_hash': generate_password_hash('admin123'),
+#                 'created_at': datetime.now().isoformat()
+#             },
+#             'user1@example.com': {
+#                 'id': str(uuid.uuid4()),
+#                 'name': 'Test User',
+#                 'email': 'user1@example.com',
+#                 'password_hash': generate_password_hash('password123'),
+#                 'created_at': datetime.now().isoformat()
+#             }
+#         }
+#         save_users(default_users)
+#         print("Default users created: admin@example.com/admin123, user1@example.com/password123")
+
+
 
 def generate_jwt_token(user_id, email):
     """Generate JWT token for user"""
@@ -137,28 +156,31 @@ def register():
             print("Name too short")  # Debug log
             return jsonify({'error': 'Name must be at least 2 characters long'}), 400
         
-        users = load_users()
-        print(f"Current users: {list(users.keys())}")  # Debug log
+        # users = load_users()
+        # print(f"Current users: {list(users.keys())}")  # Debug log
         
-        if email in users:
-            print("Email already exists")  # Debug log
-            return jsonify({'error': 'Email already exists'}), 400
+        # if email in users:
+        #     print("Email already exists")  # Debug log
+        #     return jsonify({'error': 'Email already exists'}), 400
         
+        existing_user = User.query.filter_by(email=email).first() 
+        if existing_user: 
+            return jsonify({"error": "Email already exists"}), 400
         # Create new user
         user_id = str(uuid.uuid4())
-        new_user = {
-            'id': user_id,
-            'name': name,
-            'email': email,
-            'password_hash': generate_password_hash(password),
-            'created_at': datetime.now().isoformat()
-        }
+        new_user = User(
+            id=str(uuid.uuid4()),
+            name=name,
+            email=email,
+            password_hash=generate_password_hash(password)
+        )
+        db.session.add(new_user)
+        db.session.commit()
+        # users[email] = new_user
+        # print(f"Created new user: {email}")  # Debug log
         
-        users[email] = new_user
-        print(f"Created new user: {email}")  # Debug log
-        
-        save_users(users)
-        print("User saved successfully")  # Debug log
+        # save_users(users)
+        # print("User saved successfully")  # Debug log
         
         # Generate JWT token for the new user
         token = generate_jwt_token(user_id, email)
@@ -189,16 +211,20 @@ def login():
         email = data['email'].strip().lower()
         password = data['password']
         
-        users = load_users()
+        # users = load_users()
         
-        if email not in users:
-            return jsonify({'error': 'Invalid email or password'}), 401
+        # if email not in users:
+        #     return jsonify({'error': 'Invalid email or password'}), 401
         
-        user = users[email]
+        # user = users[email]
         
-        if not check_password_hash(user['password_hash'], password):
-            return jsonify({'error': 'Invalid email or password'}), 401
+        # if not check_password_hash(user['password_hash'], password):
+        #     return jsonify({'error': 'Invalid email or password'}), 401
         
+        user = User.query.filter_by(email=email).first() 
+        if not user or not check_password_hash(user.password_has, password): 
+            return jsonify({"error": "Invalid email or password"}), 401
+
         # Generate JWT token
         token = generate_jwt_token(user['id'], email)
         
