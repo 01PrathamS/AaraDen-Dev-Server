@@ -20,5 +20,5 @@ def token_required(f):
         if not user:
             return jsonify({"error": "User not found"}), 401
 
-        return f(user=user, *args, **kwargs)
+        return f(*args, **kwargs)
     return decorated_function
