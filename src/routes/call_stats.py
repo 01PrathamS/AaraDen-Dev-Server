@@ -5,6 +5,8 @@ from src.routes.auth_decorator import token_required
 from src.utils import resolve_date_range
 
 stats_bp = Blueprint("stats", __name__)
+
+
 @stats_bp.route("/call-counts", methods=["GET"])
 @token_required
 def get_call_stats():
@@ -57,27 +59,23 @@ def get_call_direction():
         return jsonify({"error": str(e)}), 400
 
     try:
-        # Total recordings
-        total_count = db.session.query(func.count(Recording.recording_id)) \
+        # Base query with join
+        base_query = db.session.query(func.count(Recording.recording_id)) \
             .join(CallLog, Recording.call_log_id == CallLog.id) \
-            .filter(Recording.recorded_date.between(start_date, end_date)) \
-            .scalar()
+            .filter(Recording.recorded_date.between(start_date, end_date))
 
-        # Inbound calls
-        inbound_count = db.session.query(func.count(Recording.recording_id)) \
-            .join(CallLog, Recording.call_log_id == CallLog.id) \
-            .filter(
-                Recording.recorded_date.between(start_date, end_date),
-                CallLog.direction == 'Inbound'
-            ).scalar()
+        # Counts
+        total_count = base_query.scalar()
 
-        # Outbound calls
-        outbound_count = db.session.query(func.count(Recording.recording_id)) \
-            .join(CallLog, Recording.call_log_id == CallLog.id) \
-            .filter(
-                Recording.recorded_date.between(start_date, end_date),
-                CallLog.direction == 'Outbound'
-            ).scalar()
+        inbound_count = base_query.filter(CallLog.direction == 'Inbound').scalar()
+        outbound_count = base_query.filter(CallLog.direction == 'Outbound').scalar()
+
+        # Voice mail filter
+        voicemail_filter = func.lower(Recording.tags).like('%voice mail%')
+
+        voice_mail_count = base_query.filter(voicemail_filter).scalar()
+        inbound_voice_mail_count = base_query.filter(CallLog.direction == 'Inbound', voicemail_filter).scalar()
+        outbound_voice_mail_count = base_query.filter(CallLog.direction == 'Outbound', voicemail_filter).scalar()
 
         return jsonify({
             "type": type_param,
@@ -85,15 +83,13 @@ def get_call_direction():
             "end_date": str(end_date),
             "total_recordings": total_count,
             "Inbound": inbound_count,
-            "Outbound": outbound_count
+            "Outbound": outbound_count,
+            "voice_mail_count": voice_mail_count,
+            "Inbound_voice_mail_count": inbound_voice_mail_count,
+            "Outbound_voice_mail_count": outbound_voice_mail_count
         })
 
     except Exception as e:
-        print("Error in get_call_stats:", str(e))
+        print("Error in get_call_direction:", str(e))
         return jsonify({"error": "Internal server error"}), 500
 
-
-##  number of voice mails 
-
-
-##
